@@ -61,21 +61,12 @@ git clone <git-remote-url> Vic_Statusline
 ```
 
 설치는 `SKILL.md` 의 "Install" 절차대로 진행되며:
-- `~/.claude/{statusline-command.sh, scripts/claude-activity.sh, scripts/codex-usage.sh, scripts/context-threshold-check.sh}` 복사
+- `~/.claude/{statusline-command.sh, scripts/claude-activity.sh, scripts/codex-usage.sh}` 복사
 - `~/.claude/settings.json` 의 `statusLine` + 5 개 훅 (UserPromptSubmit / PreToolUse /
-  PostToolUse / Stop ×2 [activity + threshold] / SubagentStop) 을 머지 (기존 키 보존)
+  PostToolUse / Stop / SubagentStop) 을 머지 (기존 키 보존)
 - 기존 파일은 모두 `.bak.<ts>` 로 백업
 
 설치 후 Claude Code 재시작.
-
-### 자동 핸드오프 임계 (80%)
-
-`context-threshold-check.sh` 는 Stop hook 으로 등록되어 context window 사용량이
-임계값 (기본 80%) 을 넘으면 `hookSpecificOutput.additionalContext` 로 모델에
-"HANDOFF-r{N+1}.md 작성 후 stop" reminder 를 inject 한다. 프롬프트 캐시 cliff
-직전에 자율 라운드 루프를 자연스럽게 멈추기 위함.
-
-임계값 변경: `export CLAUDE_CONTEXT_HANDOFF_THRESHOLD=85`.
 
 ## 원본 PC 에서 스냅샷 갱신
 
@@ -85,7 +76,7 @@ statusline 스크립트를 수정한 뒤:
 "Vic_Statusline 동기화"   ← 자연어로 호출
 ```
 
-→ 라이브 `~/.claude/...` 의 4 개 스크립트가 이 레포의 `assets/` 로 복사됨.
+→ 라이브 `~/.claude/...` 의 3 개 스크립트가 이 레포의 `assets/` 로 복사됨.
 → 그 다음 `git add -A && git commit && git push`.
 
 ## 의존성
@@ -103,8 +94,7 @@ Vic_Statusline/
 ├── reference.md      # 각 statusline 라인의 의미와 데이터 출처
 ├── README.md         # 이 파일
 └── assets/
-    ├── statusline-command.sh        # 메인 렌더러 (+ ctx_pct cache 작성)
+    ├── statusline-command.sh        # 메인 렌더러
     ├── claude-activity.sh           # 활동 배너 상태 머신 (Working/Wait/Done/Idle)
-    ├── codex-usage.sh               # Codex 사용량 (live RPC + sqlite 폴백)
-    └── context-threshold-check.sh   # Stop hook: 80% 임계 자동 핸드오프 reminder
+    └── codex-usage.sh               # Codex 사용량 (live RPC + sqlite 폴백)
 ```
