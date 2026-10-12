@@ -393,6 +393,25 @@ def window(w):
         "resets_at":       int(w.get("resetsAt") or 0),
     }
 
+# Classify windows by their actual length, not by primary/secondary position.
+# Some plans (e.g. Pro Lite) expose only one window, and it is the weekly one
+# sitting in `primary` — positional mapping would mislabel it as ~5h.
+# windowDurationMins: 300 → 5h, 10080 → 7d. Missing → derive from resetsAt.
+def classify(rl):
+    five, seven = None, None
+    for w in ((rl or {}).get("primary"), (rl or {}).get("secondary")):
+        if not w:
+            continue
+        mins = w.get("windowDurationMins")
+        if mins is None:
+            left = int(w.get("resetsAt") or 0) - now
+            mins = 10080 if left > 24 * 60 * 60 else 300
+        if mins >= 1440:
+            seven = seven or window(w)
+        else:
+            five = five or window(w)
+    return five, seven
+
 main_rl = result.get("rateLimits") or {}
 spark_rl = None
 for v in (result.get("rateLimitsByLimitId") or {}).values():
@@ -400,16 +419,19 @@ for v in (result.get("rateLimitsByLimitId") or {}).values():
         spark_rl = v
         break
 
+main_5h, main_7d   = classify(main_rl)
+spark_5h, spark_7d = classify(spark_rl)
+
 out = {
     "available":       True,
     "mode":            "subscription",
     "provider":        provider,
     "sampled_at":      now,
     "source":          "rpc",
-    "five_hour":       window(main_rl.get("primary")),
-    "seven_day":       window(main_rl.get("secondary")),
-    "spark_five_hour": window(spark_rl.get("primary"))   if spark_rl else None,
-    "spark_seven_day": window(spark_rl.get("secondary")) if spark_rl else None,
+    "five_hour":       main_5h,
+    "seven_day":       main_7d,
+    "spark_five_hour": spark_5h,
+    "spark_seven_day": spark_7d,
 }
 sys.stdout.write(json.dumps(out, separators=(",", ":")))
 PY
@@ -425,7 +447,7 @@ fi
 # Read via python3's built-in sqlite3 module (no sqlite3 CLI dependency) and
 # emit the same JSON shape the RPC path produces. Field mapping from the log
 # row: used_percent→used_percentage, reset_at→resets_at, buckets keyed by
-# window_minutes (300→5h, 10080→7d), with positional fallback.
+# window_minutes (300→5h, 10080→7d); classified by length, never position.
 if [ -r "$LOGS_DB" ]; then
   sub_out=$(PROVIDER="$provider" NOW_EPOCH="$now_epoch" LOGS_DB="$LOGS_DB" python3 - <<'PY'
 import json, os, sqlite3, sys
@@ -473,11 +495,20 @@ for i in range(idx, len(body)):
 if not obj:
     sys.exit(1)
 
+# Classify by actual window length (window_minutes), never by position:
+# a single-window plan carries its weekly bucket in `primary`. Missing
+# window_minutes → derive from reset_at distance.
 def pick(buckets, minutes, pos):
     for b in buckets:
-        if b and b.get("window_minutes") == minutes:
+        if not b:
+            continue
+        wm = b.get("window_minutes")
+        if wm is None:
+            left = int(b.get("reset_at") or 0) - int(ts)
+            wm = 10080 if left > 24 * 60 * 60 else 300
+        if (wm >= 1440) == (minutes >= 1440):
             return b
-    return buckets[pos] if len(buckets) > pos else None
+    return None
 
 def win(b):
     if not b:
